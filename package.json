@@ -1,0 +1,16 @@
+{
+    "name": "vibecoding-grader",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "grade:git_01": "node grader/grade_git_01.js",
+        "check:git_01": "node --check grader/grade_git_01.js"
+    },
+    "dependencies": {
+        "@octokit/rest": "^21.0.2"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}
