@@ -10,6 +10,7 @@ const LESSON = "git_01";
 const ANSWER_PATH = `lessons/${LESSON}/answer.md`;
 const MAX_SCORE = 100;
 const PASS_SCORE = 60;
+const GIT_FUN_LINK_TEXT = "更多git趣闻，点击该网址查看：https://v.douyin.com/7-fsK7-QTxw/";
 
 if (!COURSE_REPO) {
     throw new Error("Missing COURSE_REPO");
@@ -156,7 +157,7 @@ function gradeAnswerContent(answerContent) {
     if (
         includesCommand(q1, [
             "git clone",
-            "https://github.com/your-org/vibecoding-course.git"
+            "https://github.com/Shergould/vibecoding-course.git"
         ])
     ) {
         score += 20;
@@ -398,16 +399,17 @@ async function findFeedbackIssue(username) {
 
 function formatFeedback(result) {
     const statusText = result.status === "passed" ? "通过" : "未通过";
+    const hasProblems = result.problems.length > 0;
 
     const feedback = result.feedback.length
         ? result.feedback.map((item) => `- ${item}`).join("\n")
         : "- 暂无通过项";
 
-    const problems = result.problems.length
+    const problems = hasProblems
         ? result.problems.map((item) => `- ${item}`).join("\n")
         : "- 无";
 
-    return [
+    const lines = [
         `## ${LESSON} 评审结果`,
         "",
         `学生：${result.github_username}`,
@@ -424,7 +426,13 @@ function formatFeedback(result) {
         "### 需要修正",
         "",
         problems
-    ].join("\n");
+    ];
+
+    if (hasProblems) {
+        lines.push("", GIT_FUN_LINK_TEXT);
+    }
+
+    return lines.join("\n");
 }
 
 async function postFeedbackIssue(result) {
