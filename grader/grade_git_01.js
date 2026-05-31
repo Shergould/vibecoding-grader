@@ -383,8 +383,12 @@ async function setCommitStatus(result) {
     });
 }
 
-async function findFeedbackIssue(username) {
-    const expectedTitle = `[Feedback] ${username} ${LESSON}`;
+function feedbackIssueTitle(result) {
+    return `[Feedback] ${result.github_username} ${LESSON} ${result.commit.slice(0, 7)}`;
+}
+
+async function findFeedbackIssue(result) {
+    const expectedTitle = feedbackIssueTitle(result);
 
     const issues = await octokit.paginate(octokit.rest.issues.listForRepo, {
         owner,
@@ -436,10 +440,11 @@ function formatFeedback(result) {
 }
 
 async function postFeedbackIssue(result) {
-    const title = `[Feedback] ${result.github_username} ${LESSON}`;
+    const title = feedbackIssueTitle(result);
     const body = formatFeedback(result);
 
-    const issue = await findFeedbackIssue(result.github_username);
+    const issue = await findFeedbackIssue(result);
+    const labels = ["grading-feedback", LESSON, result.status];
 
     if (!issue) {
         await octokit.rest.issues.create({
@@ -447,10 +452,18 @@ async function postFeedbackIssue(result) {
             repo,
             title,
             body,
-            labels: ["grading-feedback", LESSON, result.status]
+            labels
         });
         return;
     }
+
+    await octokit.rest.issues.update({
+        owner,
+        repo,
+        issue_number: issue.number,
+        state: "open",
+        labels
+    });
 
     await octokit.rest.issues.createComment({
         owner,
