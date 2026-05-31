@@ -2,7 +2,7 @@
   "github_username": "test-user",
   "lesson": "git_01",
   "branch": "student/test-user/git_01",
-  "commit": "1565dfeb786f077e8b00908d44dd5cd1b6737c40",
+  "commit": "13d089d27967ac9f3c58bd66d54a0d948ef205f1",
   "changed_files": [
     "lessons/git_01/answer.md"
   ],
@@ -14,13 +14,13 @@
     "未修改保护目录。",
     "已修改 lessons/git_01/answer.md。",
     "commit message 包含 finish git_01。",
+    "Q1 正确：写出了 git clone 课程仓库的命令。",
     "Q2 正确：写出了创建并切换到 student/alice/git_01 分支的命令。",
     "Q3 正确：写出了暂存 answer.md 的命令。",
-    "Q4 正确：commit message 包含 finish git_01。",
-    "Q5 正确：写出了推送 student/alice/git_01 到 origin 的命令。"
+    "Q4 正确：commit message 包含 finish git_01。"
   ],
   "problems": [
-    "Q1 错误：需要使用 git clone 克隆课程仓库。"
+    "Q5 错误：需要把 student/alice/git_01 推送到 origin。"
   ],
-  "graded_at": "2026-05-29T14:15:42.673Z"
+  "graded_at": "2026-05-31T10:08:11.600Z"
 }
