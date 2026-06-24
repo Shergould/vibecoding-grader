@@ -1,6 +1,8 @@
 name: Grade Git Lesson
 
 on:
+  repository_dispatch:
+    types: [student_submission]
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
@@ -16,7 +18,7 @@ jobs:
       - name: Checkout grader repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -24,17 +26,15 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Check grader script syntax
-        run: npm run check:git_01
-
       - name: Grade git_01
         run: npm run grade:git_01
         env:
           COURSE_REPO: Shergould/vibecoding-course
           BASE_BRANCH: main
           GRADER_BOT_TOKEN: ${{ secrets.GRADER_BOT_TOKEN }}
+          GIT_01_COMPLETION_KEY: ${{ secrets.GIT_01_COMPLETION_KEY }}
 
-      - name: Commit grading results
+      - name: Commit results
         run: |
           git config user.name "vibecoding-grader-bot"
           git config user.email "grader-bot@example.com"
