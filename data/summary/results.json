@@ -1,0 +1,31 @@
+[
+  {
+    "github_username": "test-user",
+    "lesson": "git_01",
+    "attempt_number": 1,
+    "branch": "student/test-user/git_01",
+    "commit": "876b5f70cada007db4885d0bb44e800b977aaa77",
+    "changed_files": [
+      ".github/workflows/notify-grader.yml",
+      "lessons/git_01/answer.md"
+    ],
+    "score": 40,
+    "max_score": 100,
+    "status": "failed",
+    "feedback": [
+      "分支命名正确。",
+      "已修改 lessons/git_01/answer.md。",
+      "Q1 正确：写出了 clone 课程仓库的命令。",
+      "Q2 正确：写出了创建并切换到 student/alice/git_01 分支的命令。",
+      "Q3 正确：写出了暂存 answer.md 的命令。",
+      "Q4 正确：commit message 包含 finish git_01。"
+    ],
+    "problems": [
+      "不能修改保护目录文件：.github/workflows/notify-grader.yml。",
+      "commit message 必须包含 finish git_01。",
+      "Q5 错误：需要把 student/alice/git_01 推送到 origin。"
+    ],
+    "completion_key": null,
+    "graded_at": "2026-06-24T16:28:15.370Z"
+  }
+]
