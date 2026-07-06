@@ -2,29 +2,28 @@
   {
     "github_username": "test-user",
     "lesson": "git_01",
-    "attempt_number": 3,
+    "attempt_number": 4,
     "branch": "student/test-user/git_01",
-    "commit": "db2a335dc288fc631a1403a3c085b9d7da0cb8d2",
+    "commit": "73d038c06c839fdbadf2269570f3f9292902a505",
     "changed_files": [
       "lessons/git_01/answer.md"
     ],
-    "score": 80,
+    "score": 100,
     "max_score": 100,
-    "status": "failed",
+    "status": "passed",
     "feedback": [
       "分支命名正确。",
       "未修改保护目录。",
       "已修改 lessons/git_01/answer.md。",
       "commit message 包含 finish git_01。",
+      "Q1 正确：写出了 clone 课程仓库的命令。",
       "Q2 正确：写出了创建并切换到 student/alice/git_01 分支的命令。",
       "Q3 正确：写出了暂存 answer.md 的命令。",
       "Q4 正确：commit message 包含 finish git_01。",
       "Q5 正确：写出了推送 student/alice/git_01 到 origin 的命令。"
     ],
-    "problems": [
-      "Q1 错误：需要使用 git clone https://github.com/Shergould/vibecoding-course.git。"
-    ],
-    "completion_key": null,
-    "graded_at": "2026-07-06T06:05:19.719Z"
+    "problems": [],
+    "completion_key": "AfPc_a7UEtIwAL4FwFRHR8F8VvfmpQP1",
+    "graded_at": "2026-07-06T06:06:26.007Z"
   }
 ]
