@@ -92,5 +92,38 @@
     "problems": [],
     "completion_key": "AfPc_a7UEtIwAL4FwFRHR8F8VvfmpQP1",
     "graded_at": "2026-07-06T06:06:26.007Z"
+  },
+  {
+    "github_username": "tyx76",
+    "lesson": "git_01",
+    "attempt_number": 1,
+    "pr_number": 5,
+    "pr_url": "https://github.com/Shergould/vibecoding-course/pull/5",
+    "source_repo": "tyx76/vibecoding-course",
+    "branch": "student/tyx76/git_01",
+    "commit": "044b1e7c9ec35fe333800e8fa9285a44d6a47f06",
+    "base_commit": "6a3a44150860bb6555b3177d42f01ba1c5831ebf",
+    "changed_files": [
+      "lessons/git_01/answer.md"
+    ],
+    "score": 100,
+    "status": "passed",
+    "feedback": [
+      "分支命名正确。",
+      "未修改保护目录。",
+      "已修改 lessons/git_01/answer.md。",
+      "commit message 包含 finish git_01。",
+      "Q1 正确：写出了 clone 课程仓库的命令。",
+      "Q2 正确：写出了创建并切换到 student/alice/git_01 分支的命令。",
+      "Q3 正确：写出了暂存 answer.md 的命令。",
+      "Q4 正确：commit message 包含 finish git_01。",
+      "Q5 正确：写出了推送 student/alice/git_01 到 origin 的命令。"
+    ],
+    "problems": [],
+    "max_score": 100,
+    "completion_key": "AfPc_a7UEtIwAL4FwFRHR8F8VvfmpQP1",
+    "graded_at": "2026-10-26T15:43:51.987Z",
+    "feedback_posted": true,
+    "feedback_comment_id": 6420307491
   }
 ]

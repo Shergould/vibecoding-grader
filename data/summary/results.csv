@@ -2,3 +2,4 @@ github_username,lesson,attempt_number,status,score,commit,graded_at,pr_number,so
 dogeking-miao,git_01,1,passed,100,d570a548c156a3954c56df9dc02c96ca449d27eb,2026-10-26T14:46:09.039Z,4,DogeKing-miao/vibecoding-course
 shergould2,git_01,2,failed,80,0b0a590a18a13eb74173b61e137c7628ecb9d745,2026-10-26T13:25:27.465Z,3,Shergould2/vibecoding-course
 test-user,git_01,4,passed,100,73d038c06c839fdbadf2269570f3f9292902a505,2026-07-06T06:06:26.007Z,,
+tyx76,git_01,1,passed,100,044b1e7c9ec35fe333800e8fa9285a44d6a47f06,2026-10-26T15:43:51.987Z,5,tyx76/vibecoding-course
