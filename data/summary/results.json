@@ -1,5 +1,38 @@
 [
   {
+    "github_username": "dogeking-miao",
+    "lesson": "git_01",
+    "attempt_number": 1,
+    "pr_number": 4,
+    "pr_url": "https://github.com/Shergould/vibecoding-course/pull/4",
+    "source_repo": "DogeKing-miao/vibecoding-course",
+    "branch": "student/DogeKing-miao/git_01",
+    "commit": "d570a548c156a3954c56df9dc02c96ca449d27eb",
+    "base_commit": "6a3a44150860bb6555b3177d42f01ba1c5831ebf",
+    "changed_files": [
+      "lessons/git_01/answer.md"
+    ],
+    "score": 100,
+    "status": "passed",
+    "feedback": [
+      "分支命名正确。",
+      "未修改保护目录。",
+      "已修改 lessons/git_01/answer.md。",
+      "commit message 包含 finish git_01。",
+      "Q1 正确：写出了 clone 课程仓库的命令。",
+      "Q2 正确：写出了创建并切换到 student/alice/git_01 分支的命令。",
+      "Q3 正确：写出了暂存 answer.md 的命令。",
+      "Q4 正确：commit message 包含 finish git_01。",
+      "Q5 正确：写出了推送 student/alice/git_01 到 origin 的命令。"
+    ],
+    "problems": [],
+    "max_score": 100,
+    "completion_key": "AfPc_a7UEtIwAL4FwFRHR8F8VvfmpQP1",
+    "graded_at": "2026-10-26T14:46:09.039Z",
+    "feedback_posted": true,
+    "feedback_comment_id": 6418942443
+  },
+  {
     "github_username": "shergould2",
     "lesson": "git_01",
     "attempt_number": 2,
