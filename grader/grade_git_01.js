@@ -1,552 +1,312 @@
-import { Octokit } from "@octokit/rest";
 import fs from "node:fs/promises";
 import path from "node:path";
-
-const COURSE_REPO = process.env.COURSE_REPO;
-const BASE_BRANCH = process.env.BASE_BRANCH || "main";
-const TOKEN = process.env.GRADER_BOT_TOKEN;
-const COMPLETION_KEY = process.env.GIT_01_COMPLETION_KEY;
-const EVENT_PATH = process.env.GITHUB_EVENT_PATH;
+import { pathToFileURL } from "node:url";
+import { parseStudentBranch, gradeSubmission } from "./rules_git_01.js";
+import { formatFeedback } from "./feedback.js";
 
 const LESSON = "git_01";
 const ANSWER_PATH = `lessons/${LESSON}/answer.md`;
-const COURSE_CLONE_URL = "https://github.com/Shergould/vibecoding-course.git";
-const MAX_SCORE = 100;
+const SHA_PATTERN = /^[a-f0-9]{40}$/i;
+const LOGIN_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;
+const same = (a, b) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
 
-if (!COURSE_REPO) {
-  throw new Error("Missing COURSE_REPO, expected owner/repo");
-}
-
-if (!TOKEN) {
-  throw new Error("Missing GRADER_BOT_TOKEN");
-}
-
-const [owner, repo] = COURSE_REPO.split("/");
-
-if (!owner || !repo) {
-  throw new Error("COURSE_REPO must look like owner/repo");
-}
-
-const octokit = new Octokit({ auth: TOKEN });
-
-async function ensureDir(dir) {
-  await fs.mkdir(dir, { recursive: true });
-}
-
-async function readJson(filePath) {
+async function readJson(file) {
   try {
-    return JSON.parse(await fs.readFile(filePath, "utf8"));
+    return JSON.parse(await fs.readFile(file, "utf8"));
   } catch (error) {
-    if (error.code === "ENOENT") {
-      return null;
-    }
+    if (error.code === "ENOENT") return null;
     throw error;
   }
 }
 
-async function writeJson(filePath, value) {
-  await ensureDir(path.dirname(filePath));
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-}
-
-function parseStudentBranch(branchName) {
-  const match = branchName.match(/^student\/([^/]+)\/git_01$/);
-  if (!match) {
-    return { valid: false, username: null, lesson: null };
-  }
-
-  return {
-    valid: true,
-    username: match[1],
-    lesson: LESSON
-  };
-}
-
-async function getDispatchBranch() {
-  if (!EVENT_PATH) {
-    return null;
-  }
-
-  const event = await readJson(EVENT_PATH);
-  return event?.client_payload?.branch || null;
-}
-
-async function listStudentBranches() {
-  const dispatchBranch = await getDispatchBranch();
-
-  if (dispatchBranch) {
-    const branch = await getBranch(dispatchBranch);
-    return branch ? [branch] : [];
-  }
-
-  const branches = await octokit.paginate(octokit.rest.repos.listBranches, {
-    owner,
-    repo,
-    per_page: 100
-  });
-
-  return branches.filter((branch) => branch.name.startsWith("student/"));
-}
-
-async function getBranch(branchName) {
-  try {
-    const response = await octokit.rest.repos.getBranch({
-      owner,
-      repo,
-      branch: branchName
-    });
-
-    return {
-      name: response.data.name,
-      commit: {
-        sha: response.data.commit.sha
-      }
-    };
-  } catch (error) {
-    if (error.status === 404) {
-      console.log(`Branch not found, skip: ${branchName}`);
-      return null;
-    }
-    throw error;
-  }
-}
-
-async function getChangedFiles(branchName) {
-  const compare = await octokit.rest.repos.compareCommitsWithBasehead({
-    owner,
-    repo,
-    basehead: `${BASE_BRANCH}...${branchName}`
-  });
-
-  return (compare.data.files || []).map((file) => file.filename);
-}
-
-async function getCommitMessage(commitSha) {
-  const commit = await octokit.rest.git.getCommit({
-    owner,
-    repo,
-    commit_sha: commitSha
-  });
-
-  return commit.data.message || "";
-}
-
-async function getFileContent(branchName, filePath) {
-  try {
-    const response = await octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path: filePath,
-      ref: branchName
-    });
-
-    if (Array.isArray(response.data) || response.data.type !== "file") {
-      return "";
-    }
-
-    return Buffer.from(response.data.content, "base64").toString("utf8");
-  } catch (error) {
-    if (error.status === 404) {
-      return "";
-    }
-    throw error;
-  }
-}
-
-function extractBashAnswers(markdown) {
-  const answers = [];
-  const regex = /```bash\s*([\s\S]*?)```/g;
-  let match;
-
-  while ((match = regex.exec(markdown)) !== null) {
-    answers.push(match[1].trim());
-  }
-
-  return answers;
-}
-
-function normalizeCommand(command) {
-  return command
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[“”]/g, "\"")
-    .replace(/[‘’]/g, "'");
-}
-
-function commandContains(answer, expectedParts) {
-  const normalized = normalizeCommand(answer);
-  return expectedParts.every((part) => normalized.includes(part));
-}
-
-function gradeAnswerContent(answerContent) {
-  const answers = extractBashAnswers(answerContent);
-  const feedback = [];
-  const problems = [];
-  let score = 0;
-
-  if (answers.length < 5) {
-    problems.push("answer.md 中需要保留 5 个 bash 代码块，每道题一个。");
-  }
-
-  const q1 = answers[0] || "";
-  const q2 = answers[1] || "";
-  const q3 = answers[2] || "";
-  const q4 = answers[3] || "";
-  const q5 = answers[4] || "";
-
-  if (commandContains(q1, ["git clone", COURSE_CLONE_URL])) {
-    score += 20;
-    feedback.push("Q1 正确：写出了 clone 课程仓库的命令。");
-  } else {
-    problems.push(`Q1 错误：需要使用 git clone ${COURSE_CLONE_URL}。`);
-  }
-
-  if (
-    commandContains(q2, ["git checkout -b", "student/alice/git_01"])
-    || commandContains(q2, ["git switch -c", "student/alice/git_01"])
-  ) {
-    score += 20;
-    feedback.push("Q2 正确：写出了创建并切换到 student/alice/git_01 分支的命令。");
-  } else {
-    problems.push("Q2 错误：需要创建并切换到 student/alice/git_01 分支。");
-  }
-
-  if (commandContains(q3, ["git add", ANSWER_PATH])) {
-    score += 20;
-    feedback.push("Q3 正确：写出了暂存 answer.md 的命令。");
-  } else {
-    problems.push(`Q3 错误：需要使用 git add ${ANSWER_PATH}。`);
-  }
-
-  if (commandContains(q4, ["git commit", "finish git_01"])) {
-    score += 20;
-    feedback.push("Q4 正确：commit message 包含 finish git_01。");
-  } else {
-    problems.push("Q4 错误：需要使用 git commit，并且 message 包含 finish git_01。");
-  }
-
-  if (commandContains(q5, ["git push", "origin", "student/alice/git_01"])) {
-    score += 20;
-    feedback.push("Q5 正确：写出了推送 student/alice/git_01 到 origin 的命令。");
-  } else {
-    problems.push("Q5 错误：需要把 student/alice/git_01 推送到 origin。");
-  }
-
-  return { score, feedback, problems };
-}
-
-function gradeSubmission({ branchName, parsed, changedFiles, commitMessage, answerContent }) {
-  const feedback = [];
-  const problems = [];
-
-  if (parsed.valid && branchName === `student/${parsed.username}/${LESSON}`) {
-    feedback.push("分支命名正确。");
-  } else {
-    problems.push(`分支名应为 student/<你的 GitHub 用户名>/${LESSON}。`);
-  }
-
-  const protectedFiles = changedFiles.filter((file) => (
-    file.startsWith(".github/")
-    || file.startsWith("grader/")
-    || file.startsWith("data/")
-  ));
-
-  if (protectedFiles.length === 0) {
-    feedback.push("未修改保护目录。");
-  } else {
-    problems.push(`不能修改保护目录文件：${protectedFiles.join(", ")}。`);
-  }
-
-  if (changedFiles.includes(ANSWER_PATH)) {
-    feedback.push(`已修改 ${ANSWER_PATH}。`);
-  } else {
-    problems.push(`需要修改 ${ANSWER_PATH}。`);
-  }
-
-  if (commitMessage.includes("finish git_01")) {
-    feedback.push("commit message 包含 finish git_01。");
-  } else {
-    problems.push("commit message 必须包含 finish git_01。");
-  }
-
-  const answerGrade = gradeAnswerContent(answerContent);
-  feedback.push(...answerGrade.feedback);
-  problems.push(...answerGrade.problems);
-
-  const score = Math.max(
-    0,
-    answerGrade.score
-      - (parsed.valid ? 0 : 20)
-      - (protectedFiles.length === 0 ? 0 : 20)
-      - (changedFiles.includes(ANSWER_PATH) ? 0 : 20)
-      - (commitMessage.includes("finish git_01") ? 0 : 20)
-  );
-
-  return {
-    score,
-    status: score === MAX_SCORE ? "passed" : "failed",
-    feedback,
-    problems
-  };
-}
-
-async function getNextAttempt(username) {
-  const attemptDir = path.join("data", "submissions", username, LESSON);
-  await ensureDir(attemptDir);
-
-  const files = await fs.readdir(attemptDir);
-  const attemptNumbers = files
-    .map((file) => file.match(/^attempt-(\d+)\.json$/))
-    .filter(Boolean)
-    .map((match) => Number(match[1]));
-
-  return attemptNumbers.length ? Math.max(...attemptNumbers) + 1 : 1;
-}
-
-function formatAttemptFileName(attemptNumber) {
-  return `attempt-${String(attemptNumber).padStart(3, "0")}.json`;
-}
-
-async function writeSubmission(result) {
-  const attemptDir = path.join("data", "submissions", result.github_username, LESSON);
-  await ensureDir(attemptDir);
-
-  await writeJson(path.join(attemptDir, formatAttemptFileName(result.attempt_number)), result);
-  await writeJson(path.join(attemptDir, "latest.json"), result);
-}
-
-async function writeSummary() {
-  const submissionsRoot = path.join("data", "submissions");
-  const summaryDir = path.join("data", "summary");
-  await ensureDir(summaryDir);
-
-  let studentDirs = [];
-  try {
-    studentDirs = await fs.readdir(submissionsRoot, { withFileTypes: true });
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      throw error;
-    }
-  }
-
-  const results = [];
-
-  for (const entry of studentDirs) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-
-    const result = await readJson(path.join(submissionsRoot, entry.name, LESSON, "latest.json"));
-    if (result) {
-      results.push(result);
-    }
-  }
-
-  results.sort((a, b) => a.github_username.localeCompare(b.github_username));
-
-  const csv = [
-    "github_username,lesson,attempt_number,status,score,commit,graded_at",
-    ...results.map((result) => [
-      result.github_username,
-      result.lesson,
-      result.attempt_number,
-      result.status,
-      result.score,
-      result.commit,
-      result.graded_at
-    ].map(csvCell).join(","))
-  ].join("\n");
-
-  await fs.writeFile(path.join(summaryDir, "results.csv"), `${csv}\n`, "utf8");
-  await writeJson(path.join(summaryDir, "results.json"), results);
+async function writeJson(file, data) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  // Do not leave half-written JSON if the process is interrupted.
+  await fs.writeFile(`${file}.tmp`, `${JSON.stringify(data, null, 2)}\n`);
+  await fs.rename(`${file}.tmp`, file);
 }
 
 function csvCell(value) {
   const text = String(value ?? "");
-  if (/[",\n]/.test(text)) {
-    return `"${text.replaceAll("\"", "\"\"")}"`;
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+export function validateSubmission(pr, courseRepo, baseBranch) {
+  const problems = [];
+  const username = pr.user?.login;
+  const parsed = parseStudentBranch(pr.head?.ref || "");
+  if (!same(pr.base?.repo?.full_name, courseRepo) || pr.base?.ref !== baseBranch) {
+    problems.push("PR 必须提交到课程原仓库的 main 分支。");
   }
-  return text;
+  if (!LOGIN_PATTERN.test(username || "")) problems.push("无法确认提交者的 GitHub 用户名。");
+  if (!parsed.valid || !same(parsed.username, username)) {
+    problems.push("分支必须为 student/<PR 作者的 GitHub 用户名>/git_01。");
+  }
+  const source = pr.head?.repo;
+  if (!source?.fork || same(source.full_name, courseRepo) || !same(source.owner?.login, username)) {
+    problems.push("请从 PR 作者本人账号下的课程 Fork 提交作业。");
+  }
+  if (!SHA_PATTERN.test(pr.head?.sha || "") || !SHA_PATTERN.test(pr.base?.sha || "")) {
+    problems.push("PR 缺少有效的提交 SHA。");
+  }
+  return problems;
 }
 
-async function setCommitStatus(result) {
-  await octokit.rest.repos.createCommitStatus({
-    owner,
-    repo,
-    sha: result.commit,
-    state: result.status === "passed" ? "success" : "failure",
-    context: `vibecoding/${LESSON}`,
-    description: `${LESSON} attempt #${result.attempt_number} ${result.status}, score ${result.score}/${MAX_SCORE}`
-  });
-}
+// Dependency injection keeps verification offline: tests use a fake GitHub API
+// and temporary directories, never real submissions, credentials or comments.
+export function createGrader({ octokit, courseRepo, baseBranch = "main", completionKey, dataDir = "data" }) {
+  if (!/^[^/]+\/[^/]+$/.test(courseRepo || "")) throw new Error("COURSE_REPO must look like owner/repo");
+  const [owner, repo] = courseRepo.split("/");
+  const submissionsRoot = path.join(dataDir, "submissions");
+  let botId;
 
-async function findFeedbackIssue(username) {
-  const expectedTitle = `[Feedback] ${username} ${LESSON}`;
-  const issues = await octokit.paginate(octokit.rest.issues.listForRepo, {
-    owner,
-    repo,
-    state: "all",
-    per_page: 100
-  });
-
-  return issues.find((issue) => issue.title === expectedTitle);
-}
-
-async function postFeedbackIssue(result) {
-  const title = `[Feedback] ${result.github_username} ${LESSON}`;
-  const body = formatFeedback(result);
-  const issue = await findFeedbackIssue(result.github_username);
-
-  if (!issue) {
-    await octokit.rest.issues.create({
-      owner,
-      repo,
-      title,
-      body
-    });
-    return;
+  async function getPull(number) {
+    return (await octokit.rest.pulls.get({ owner, repo, pull_number: number })).data;
   }
 
-  await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: issue.number,
-    body
-  });
-}
-
-function formatFeedback(result) {
-  const statusText = result.status === "passed" ? "通过" : "未通过";
-  const feedback = result.feedback.length
-    ? result.feedback.map((item) => `- ${item}`).join("\n")
-    : "- 暂无通过项";
-  const problems = result.problems.length
-    ? result.problems.map((item) => `- ${item}`).join("\n")
-    : "- 无";
-  const keyBlock = result.status === "passed"
-    ? [
-      "",
-      "### Odoo 完成密钥",
-      "",
-      "请在 Odoo 课程选择题中选择下面这串密钥：",
-      "",
-      "```text",
-      result.completion_key,
-      "```"
-    ]
-    : [];
-
-  return [
-    `## ${LESSON} 第 ${result.attempt_number} 次提交反馈`,
-    "",
-    `学生：${result.github_username}`,
-    `状态：${statusText}`,
-    `得分：${result.score} / ${MAX_SCORE}`,
-    `分支：${result.branch}`,
-    `Commit：${result.commit}`,
-    `评审时间：${result.graded_at}`,
-    "",
-    "### 已通过检查",
-    "",
-    feedback,
-    "",
-    "### 需要修正",
-    "",
-    problems,
-    ...keyBlock
-  ].join("\n");
-}
-
-async function deleteRemoteBranch(branchName) {
-  try {
-    await octokit.rest.git.deleteRef({
-      owner,
-      repo,
-      ref: `heads/${branchName}`
+  async function postComment(prNumber, marker, body) {
+    // Only reuse comments belonging to the authenticated grading account.
+    // Students cannot suppress feedback by posting a matching HTML marker.
+    botId ??= (await octokit.rest.users.getAuthenticated()).data.id;
+    const comments = await octokit.paginate(octokit.rest.issues.listComments, {
+      owner, repo, issue_number: prNumber, per_page: 100
     });
-    console.log(`Deleted remote branch: ${branchName}`);
-  } catch (error) {
-    if (error.status === 404) {
-      console.log(`Remote branch already deleted: ${branchName}`);
+    const existing = comments.find((item) => item.user?.id === botId && item.body?.startsWith(marker));
+    const content = `${marker}\n${body}`;
+    if (existing) {
+      if (existing.body !== content) {
+        await octokit.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: content });
+      }
+      return existing.id;
+    }
+    return (await octokit.rest.issues.createComment({
+      owner, repo, issue_number: prNumber, body: content
+    })).data.id;
+  }
+
+  async function reportInvalid(pr, problems) {
+    await postComment(pr.number, `<!-- vibecoding-grader:${LESSON}:validation -->`, [
+      "## 作业提交方式需要调整", "",
+      ...problems.map((problem) => `- ${problem}`), "",
+      "本次未登记成绩。请修正后更新 PR；如需更换来源分支，请重新创建 PR。"
+    ].join("\n"));
+  }
+
+  async function studentDirectory(username) {
+    // Keep pre-migration history, including directories with mixed-case logins.
+    await fs.mkdir(submissionsRoot, { recursive: true });
+    const entries = await fs.readdir(submissionsRoot, { withFileTypes: true });
+    const existing = entries.find((entry) => entry.isDirectory() && same(entry.name, username));
+    return path.join(submissionsRoot, existing?.name || username.toLowerCase(), LESSON);
+  }
+
+  async function attemptsIn(dir) {
+    await fs.mkdir(dir, { recursive: true });
+    const names = (await fs.readdir(dir)).filter((name) => /^attempt-\d+\.json$/.test(name));
+    return Promise.all(names.map((name) => readJson(path.join(dir, name))));
+  }
+
+  async function saveResult(dir, result) {
+    const name = `attempt-${String(result.attempt_number).padStart(3, "0")}.json`;
+    await writeJson(path.join(dir, name), result);
+    const latest = await readJson(path.join(dir, "latest.json"));
+    if (!latest || latest.attempt_number <= result.attempt_number) {
+      await writeJson(path.join(dir, "latest.json"), result);
+    }
+  }
+
+  async function deliverFeedback(dir, result) {
+    if (result.feedback_posted) return;
+    result.feedback_comment_id = await postComment(
+      result.pr_number,
+      `<!-- vibecoding-grader:${LESSON}:pr:${result.pr_number}:sha:${result.commit} -->`,
+      formatFeedback(result)
+    );
+    result.feedback_posted = true;
+    await saveResult(dir, result);
+  }
+
+  async function gradePullRequest(pr) {
+    if (pr.state !== "open" || pr.draft) return;
+    const problems = validateSubmission(pr, courseRepo, baseBranch);
+    if (problems.length) {
+      await reportInvalid(pr, problems);
       return;
     }
-    throw error;
+    // Re-fetch repository metadata instead of trusting dispatch payloads or PR text.
+    const source = (await octokit.rest.repos.get({
+      owner: pr.head.repo.owner.login, repo: pr.head.repo.name
+    })).data;
+    if (!source.fork || !same(source.owner?.login, pr.user.login)
+      || !same(source.full_name, pr.head.repo.full_name)
+      || !(same(source.parent?.full_name, courseRepo) || same(source.source?.full_name, courseRepo))) {
+      await reportInvalid(pr, ["来源仓库必须是课程仓库的 Fork，并属于 PR 作者本人。"]);
+      return;
+    }
+
+    const dir = await studentDirectory(pr.user.login);
+    const attempts = await attemptsIn(dir);
+    const previous = attempts.find((item) => item.pr_number === pr.number && item.commit === pr.head.sha);
+    if (previous) {
+      await deliverFeedback(dir, previous);
+      console.log(`Skip PR #${pr.number}: SHA already graded`);
+      return;
+    }
+
+    // Both endpoints use immutable SHAs, never a moving student branch.
+    const sourceArgs = { owner: source.owner.login, repo: source.name };
+    const [comparison, commit, answer] = await Promise.all([
+      octokit.rest.repos.compareCommitsWithBasehead({
+        owner, repo, basehead: `${pr.base.sha}...${pr.head.sha}`, per_page: 1, page: 1
+      }),
+      octokit.rest.git.getCommit({ ...sourceArgs, commit_sha: pr.head.sha }),
+      octokit.rest.repos.getContent({ ...sourceArgs, path: ANSWER_PATH, ref: pr.head.sha })
+        .catch((error) => {
+          if (error.status === 404) return { data: null };
+          throw error;
+        })
+    ]);
+    const files = comparison.data.files;
+    // GitHub truncates comparisons at 300 files. Never silently grade a partial diff.
+    if (!Array.isArray(files) || files.length >= 300) {
+      await reportInvalid(pr, ["修改文件过多或无法完整读取差异，请只提交本节课的作业文件。"]);
+      return;
+    }
+    const changedFiles = [...new Set(files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)))];
+    const data = answer.data;
+    const answerContent = data?.type === "file" && data.encoding === "base64"
+      ? Buffer.from(data.content, "base64").toString("utf8") : "";
+    const grade = gradeSubmission({
+      branchName: pr.head.ref,
+      parsed: parseStudentBranch(pr.head.ref),
+      changedFiles,
+      commitMessage: commit.data.message || "",
+      answerContent
+    });
+    const current = await getPull(pr.number);
+    if (current.state !== "open" || current.draft || current.head.sha !== pr.head.sha
+      || current.base.sha !== pr.base.sha || current.head.ref !== pr.head.ref
+      || !same(current.head.repo?.full_name, source.full_name)
+      || validateSubmission(current, courseRepo, baseBranch).length) {
+      console.log(`Skip PR #${pr.number}: changed during grading; next event/sweep will retry`);
+      return;
+    }
+    if (grade.status === "passed" && !completionKey) {
+      throw new Error("GIT_01_COMPLETION_KEY is required when a submission passes");
+    }
+    const result = {
+      github_username: pr.user.login.toLowerCase(),
+      lesson: LESSON,
+      attempt_number: Math.max(0, ...attempts.map((item) => item.attempt_number)) + 1,
+      pr_number: pr.number,
+      pr_url: pr.html_url,
+      source_repo: source.full_name,
+      branch: pr.head.ref,
+      commit: pr.head.sha,
+      base_commit: pr.base.sha,
+      changed_files: changedFiles,
+      ...grade,
+      max_score: 100,
+      completion_key: grade.status === "passed" ? completionKey : null,
+      graded_at: new Date().toISOString(),
+      feedback_posted: false
+    };
+    // Persist the attempt before posting. Failed feedback is retried without regrading.
+    await saveResult(dir, result);
+    await deliverFeedback(dir, result);
   }
+
+  async function writeSummary() {
+    await fs.mkdir(submissionsRoot, { recursive: true });
+    const entries = await fs.readdir(submissionsRoot, { withFileTypes: true });
+    const results = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const latest = await readJson(path.join(submissionsRoot, entry.name, LESSON, "latest.json"));
+      if (latest) results.push(latest);
+    }
+    results.sort((a, b) => a.github_username.localeCompare(b.github_username));
+    const fields = ["github_username", "lesson", "attempt_number", "status", "score", "commit", "graded_at", "pr_number", "source_repo"];
+    await writeJson(path.join(dataDir, "summary", "results.json"), results);
+    await fs.writeFile(path.join(dataDir, "summary", "results.csv"), [
+      fields.join(","), ...results.map((result) => fields.map((field) => csvCell(result[field])).join(",")), ""
+    ].join("\n"));
+  }
+
+  async function retryPendingFeedback(errors) {
+    await fs.mkdir(submissionsRoot, { recursive: true });
+    const entries = await fs.readdir(submissionsRoot, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(submissionsRoot, entry.name, LESSON);
+      for (const result of await attemptsIn(dir)) {
+        if (!result.pr_number || result.feedback_posted !== false) continue;
+        try {
+          await deliverFeedback(dir, result);
+        } catch (error) {
+          errors.push(new Error(`Feedback retry for PR #${result.pr_number}: ${error.message}`));
+        }
+      }
+    }
+  }
+
+  async function run({ eventName = "workflow_dispatch", event = {} } = {}) {
+    const errors = [];
+    let numbers;
+    let expectedSha;
+    if (eventName === "repository_dispatch") {
+      const payload = event.client_payload;
+      if (event.action !== "student_submission" || !same(payload?.course_repo, courseRepo)
+        || !Number.isSafeInteger(payload?.pr_number) || payload.pr_number < 1
+        || !SHA_PATTERN.test(payload?.head_sha || "")) {
+        throw new Error("Invalid student_submission dispatch payload");
+      }
+      numbers = [payload.pr_number];
+      expectedSha = payload.head_sha;
+    } else if (["schedule", "workflow_dispatch"].includes(eventName)) {
+      const pulls = await octokit.paginate(octokit.rest.pulls.list, {
+        owner, repo, state: "open", base: baseBranch, per_page: 100
+      });
+      numbers = pulls.filter((pr) => !pr.draft).map((pr) => pr.number);
+      await retryPendingFeedback(errors);
+    } else {
+      throw new Error(`Unsupported event: ${eventName}`);
+    }
+    for (const number of numbers) {
+      try {
+        const pr = await getPull(number);
+        if (expectedSha && pr.head.sha !== expectedSha) {
+          console.log(`Skip stale dispatch for PR #${number}`);
+          continue;
+        }
+        await gradePullRequest(pr);
+      } catch (error) {
+        errors.push(new Error(`PR #${number}: ${error.message}`));
+      }
+    }
+    await writeSummary();
+    if (errors.length) throw new AggregateError(errors, "Some submissions or feedback failed; next sweep will retry");
+  }
+
+  return { run };
 }
 
-async function gradeBranch(branch) {
-  const parsed = parseStudentBranch(branch.name);
-
-  if (!parsed.valid) {
-    return;
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try {
+    if (!process.env.GRADER_BOT_TOKEN) throw new Error("Missing GRADER_BOT_TOKEN");
+    const { Octokit } = await import("@octokit/rest");
+    const grader = createGrader({
+      octokit: new Octokit({ auth: process.env.GRADER_BOT_TOKEN, request: { timeout: 30000 } }),
+      courseRepo: process.env.COURSE_REPO,
+      baseBranch: process.env.BASE_BRANCH || "main",
+      completionKey: process.env.GIT_01_COMPLETION_KEY
+    });
+    const event = process.env.GITHUB_EVENT_PATH ? await readJson(process.env.GITHUB_EVENT_PATH) : {};
+    await grader.run({ eventName: process.env.GITHUB_EVENT_NAME || "workflow_dispatch", event });
+  } catch (error) {
+    // Avoid logging request objects that may contain credentials.
+    console.error(error.message);
+    for (const item of error.errors || []) console.error(item.message);
+    process.exitCode = 1;
   }
-
-  const latest = await readJson(path.join("data", "submissions", parsed.username, LESSON, "latest.json"));
-
-  if (latest?.commit === branch.commit.sha) {
-    console.log(`Skip ${branch.name}: commit already graded`);
-    await deleteRemoteBranch(branch.name);
-    return;
-  }
-
-  const attemptNumber = await getNextAttempt(parsed.username);
-  console.log(`Grade ${branch.name} at ${branch.commit.sha} as attempt #${attemptNumber}`);
-
-  const [changedFiles, commitMessage, answerContent] = await Promise.all([
-    getChangedFiles(branch.name),
-    getCommitMessage(branch.commit.sha),
-    getFileContent(branch.name, ANSWER_PATH)
-  ]);
-
-  const grade = gradeSubmission({
-    branchName: branch.name,
-    parsed,
-    changedFiles,
-    commitMessage,
-    answerContent
-  });
-
-  if (grade.status === "passed" && !COMPLETION_KEY) {
-    throw new Error("GIT_01_COMPLETION_KEY is required when a submission passes");
-  }
-
-  const result = {
-    github_username: parsed.username,
-    lesson: LESSON,
-    attempt_number: attemptNumber,
-    branch: branch.name,
-    commit: branch.commit.sha,
-    changed_files: changedFiles,
-    score: grade.score,
-    max_score: MAX_SCORE,
-    status: grade.status,
-    feedback: grade.feedback,
-    problems: grade.problems,
-    completion_key: grade.status === "passed" ? COMPLETION_KEY : null,
-    graded_at: new Date().toISOString()
-  };
-
-  await writeSubmission(result);
-  await writeSummary();
-  await setCommitStatus(result);
-  await postFeedbackIssue(result);
-  await deleteRemoteBranch(branch.name);
 }
-
-async function main() {
-  await ensureDir(path.join("data", "submissions"));
-  await ensureDir(path.join("data", "summary"));
-
-  const branches = await listStudentBranches();
-
-  for (const branch of branches) {
-    await gradeBranch(branch);
-  }
-
-  await writeSummary();
-}
-
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});

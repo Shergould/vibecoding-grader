@@ -10,21 +10,29 @@ on:
 permissions:
   contents: write
 
+# All entry points share the same results files. A sweep also recovers events
+# replaced in GitHub's pending concurrency queue.
+concurrency:
+  group: git-01-grading-results
+  cancel-in-progress: false
+
 jobs:
   grade:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout grader repo
+      - name: Checkout trusted grader default branch
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Grade git_01
         run: npm run grade:git_01
@@ -34,10 +42,15 @@ jobs:
           GRADER_BOT_TOKEN: ${{ secrets.GRADER_BOT_TOKEN }}
           GIT_01_COMPLETION_KEY: ${{ secrets.GIT_01_COMPLETION_KEY }}
 
+      # Save completed attempts even when another PR or its feedback failed.
       - name: Commit results
+        if: ${{ !cancelled() }}
         run: |
           git config user.name "vibecoding-grader-bot"
           git config user.email "grader-bot@example.com"
           git add data/
-          git commit -m "update git_01 grading results" || exit 0
-          git push
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "update git_01 grading results"
+          git push origin HEAD:main

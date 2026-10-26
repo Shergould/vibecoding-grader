@@ -29,3 +29,5 @@ Desktop.ini
 # Test and coverage output
 coverage/
 
+# Incomplete atomic grade writes
+data/**/*.tmp
