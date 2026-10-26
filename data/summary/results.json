@@ -29,7 +29,8 @@
     "max_score": 100,
     "completion_key": "AfPc_a7UEtIwAL4FwFRHR8F8VvfmpQP1",
     "graded_at": "2026-10-26T12:45:02.562Z",
-    "feedback_posted": false
+    "feedback_posted": true,
+    "feedback_comment_id": 6417067540
   },
   {
     "github_username": "test-user",
