@@ -1,3 +1,3 @@
 github_username,lesson,attempt_number,status,score,commit,graded_at,pr_number,source_repo
-shergould2,git_01,1,passed,100,a2a5798d2150a057ff5342c226c8ca243693fdb4,2026-10-26T12:45:02.562Z,3,Shergould2/vibecoding-course
+shergould2,git_01,2,failed,80,0b0a590a18a13eb74173b61e137c7628ecb9d745,2026-10-26T13:25:27.465Z,3,Shergould2/vibecoding-course
 test-user,git_01,4,passed,100,73d038c06c839fdbadf2269570f3f9292902a505,2026-07-06T06:06:26.007Z,,
